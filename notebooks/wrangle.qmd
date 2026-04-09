@@ -1,0 +1,184 @@
+# Clean and wrangle data
+
+## Setup
+
+```{r load packages}
+library(dplyr)
+library(tidyr)
+library(readr)
+library(tidyverse)
+```
+
+## Source data
+```{r}
+catch_original <- read_csv("https://knb.ecoinformatics.org/knb/d1/mn/v2/object/df35b.302.1")
+```
+
+## Clean and reshape data
+
+
+```{r}
+colnames(catch_original)
+head(catch_original)
+summary(catch_original)
+
+# Select only desired columns
+catch_data <- catch_original %>%
+    dplyr::select(Region, Year, Chinook, Sockeye, Coho, Pink, Chum)
+
+# Check the result
+head(catch_data)
+
+catch_data3 <- catch_original %>%
+    dplyr::select(Region,
+                  Year,
+                  Chinook,
+                  Sockeye,
+                  Coho,
+                  Pink,
+                  Chum,
+                  total = All,
+                  notes = notesRegCode)
+
+catch_data4 <- catch_original %>%
+    dplyr::rename(total = All,
+                  notes = notesRegCode)
+
+dplyr::glimpse(catch_data) #useful way to check your data formatting
+
+```
+
+
+```{r}
+catch_clean <- catch_data %>% 
+    mutate(Chinook = as.numeric(Chinook))
+#error and creation of NA suggests something in that column is non-numeric
+
+is.na(catch_clean$Chinook)
+which(is.na(catch_clean$Chinook))
+catch_data[which(is.na(catch_clean$Chinook)),]
+
+# Use a conditional to fix the bad value, then make the column numeric
+
+catch_clean <- catch_data %>%
+    dplyr::mutate(
+        Chinook = dplyr::if_else(condition = Chinook == "I", 
+            true = "1", #need to keep as character in quotes because original dataset is character
+            false = Chinook),
+        Chinook = as.numeric(Chinook))
+
+# Check the result
+catch_clean[i, ]
+```
+
+## Go from wider to longer
+```{r}
+catch_long <- catch_clean %>% 
+    pivot_longer(col = - c(Region, Year),
+        names_to = "species",
+        values_to = "catch_thousands")
+
+head(catch_long)
+```
+
+##Go from long back to wide
+
+```{r}
+catch_wide <- catch_long %>% 
+    pivot_wider(
+        names_from = species,
+        values_from = catch_thousands,
+        values_fill = 0)
+
+head(catch_wide)
+```
+
+
+```{r}
+catch_long <- catch_long %>% 
+    mutate(catch = catch_thousands * 1000) %>% 
+    select(-catch_thousands)
+head(catch_long)
+```
+
+
+```{r}
+mean_region <- catch_long %>% 
+    group_by(Region) %>% #doesn't actually rearrange data but sets internal grouping attribute
+    dplyr::summarize(mean_catch = mean(catch), na.rm = TRUE, .groups = "drop") %>% #always na.rm before taking mean because that is not default value in R and make sure you drop the groups at the end
+    arrange(desc(mean_catch))
+
+print(mean_region)
+head(mean_region)
+```
+
+
+```{r}
+sse_catch <- catch_long %>% 
+    filter(Region == "SSE")
+
+head(sse_catch)
+```
+
+
+```{r}
+sites_df <- data.frame(site = c("HAW-101", "HAW-103", "OAH-320", "OAH-219", "MAU-039"))
+
+# Check that out
+head(sites_df)
+
+# Split site by the dash between the site letters and its code
+sites_df %>%
+    tidyr::separate_wider_delim(cols = site, delim = "-",
+        names = c("island", "site_number"), cols_remove = FALSE)
+
+
+```
+
+
+```{r}
+dates_df <- data.frame(
+    year  = rep(x = "1930", times = 3),
+    month = rep(x = "12",   times = 3),
+    day   = 14:16)
+
+# Check that
+dates_df
+
+# Combine those columns into a single 'date' column
+dates_df %>%
+    tidyr::unite(col = date, 
+        year, month, day,
+        sep = "-", 
+        remove = FALSE)
+
+
+```
+
+## Final pretty code
+```{r}
+# Grab the data
+catch_original <- readr::read_csv(file = "https://knb.ecoinformatics.org/knb/d1/mn/v2/object/df35b.302.1",
+    show_col_types = FALSE)
+
+# Drop unwanted columns, fix "I" typo, reshape to long, transform catch
+# into individual fish count, calculate mean catch by region, and sort
+# in descending order
+mean_region <- catch_original %>%
+    dplyr::select(-All, -notesRegCode) %>% 
+    dplyr::mutate(
+        Chinook = dplyr::if_else(Chinook == "I", 
+            true = "1", false = Chinook),
+        Chinook = as.numeric(Chinook)) %>% 
+    tidyr::pivot_longer(-c(Region, Year), 
+        names_to = "species", 
+        values_to = "catch") %>%
+    dplyr::mutate(catch = catch*1000) %>% 
+    dplyr::group_by(Region) %>% 
+    dplyr::summarize(mean_catch = mean(catch, na.rm = TRUE),
+        .groups = "drop") %>% 
+    dplyr::arrange(dplyr::desc(mean_catch))
+
+# Check the result
+head(mean_region)
+```
