@@ -3,6 +3,8 @@
 ## Setup
 
 ```{r load packages}
+#| label: load packages
+#above code adds labels for chunk to the outline
 library(dplyr)
 library(tidyr)
 library(readr)
