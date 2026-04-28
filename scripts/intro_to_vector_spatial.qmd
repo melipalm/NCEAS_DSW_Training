@@ -1,0 +1,79 @@
+---
+title: "Working with Vector Spatial Data in R"
+format: html
+---
+
+## Setup
+
+## Download Data
+
+```{r}
+out_dir <- here::here('data/ak_regions')
+
+if(!dir.exists(out_dir)) {
+    knb_url <- "https://dev.nceas.ucsb.edu/knb/d1/mn/v2/object/urn%3Auuid%3Aaceaecb2-1ce0-4d41-a839-d3607d32bb58"
+
+    download.file(url = knb_url, 
+                  destfile = 'shapefile_demo_data.zip', 
+                  mode = 'wb')
+
+    unzip('shapefile_demo_data.zip', exdir = out_dir)
+
+    file.remove('shapefile_demo_data.zip')
+}
+```
+
+## Attach packages
+
+```{r}
+### Data wrangling packages:
+library(readr)
+library(dplyr)
+library(tidyr)
+library(here)
+
+### Simple Features vector spatial data:
+library(sf)
+
+### Data visualization packages:
+library(ggplot2)
+library(leaflet)
+library(scales)
+library(ggspatial)
+```
+
+
+## Read in data
+
+```{r}
+ak_rgns_sf <- read_sf(here("data/ak_regions/ak_regions_simp.shp"))
+```
+
+
+## Data Exploration
+
+## Make a quick plot
+
+```{r}
+# quick plot
+plot(ak_rgns_sf)
+
+#view is not optimized for Alaska- splits it in half
+
+```
+
+```{r}
+#what projection/datum is being used?
+st_crs(ak_rgns_sf)
+
+#transform into Alaska Albers projection which is better suited for Alaska
+ak_rgns_3338_sf <- ak_rgns_sf %>%
+    st_transform(crs = 3338)
+
+# st_crs(ak_rgns_3338_sf) ### run in console to check
+#now it plots the islands in the right place
+```
+
+## Analysis
+
+## Visualization
