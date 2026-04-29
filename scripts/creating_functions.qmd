@@ -1,0 +1,183 @@
+---
+title: "Function practice"
+format: html
+---
+
+```{r}
+### For data wrangling and plotting
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(purrr) ### for iteration using map() family of functions
+
+library(palmerpenguins) ### example data
+```
+
+## Convert C to F
+
+```{r}
+airtemps <- c(212, 30.3, 78, 32)
+celsius1 <- (airtemps[1] - 32) * 5/9
+celsius2 <- (airtemps[2] - 32) * 5/9
+celsius3 <- (airtemps[3] - 33) * 5/9
+
+#better way
+convert_f_to_c <- function(fahr) {
+  celsius <- (fahr - 32) * 5/9
+  return(celsius)
+}
+
+### check single value:
+celsius1a <- convert_f_to_c(airtemps[1])
+celsius1a == celsius1
+
+### calculate for whole vector:
+celsius_vec <- convert_f_to_c(airtemps)
+celsius_vec
+```
+
+
+```{r}
+convert_temp <- function(t, scale = 'f') {
+    if(scale == "c") {
+        result = t * 9/5 + 32
+    } else {
+        result  = (t - 32) * 5/9
+    }
+    return(round(result, 3))
+}
+
+convert_temp(t = airtemps)
+convert_temp(t = airtemps, scale = 'Celsius')
+
+
+#Error handling!
+
+convert_temp <- function(t, scale = 'f') {
+    scale = tolower(substr(scale, 1, 1)) #forces it to be lowercase
+    if(!scale %in% c('c', 'f')) {
+      stop('scale must be either "c" or "f"')  #return error if you put in something besides c or f
+    }
+    if(scale == "c") {
+        result = t * 9/5 + 32
+    } else {
+        result  = (t - 32) * 5/9
+    }
+    return(round(result, 3))
+}
+
+convert_temp(t = airtemps, scale = 'celsius')
+
+#or you could make it fail sooner
+#provide sensible default for input ex. f instead of farenheit
+#can also do warning instead of stop which can be supressed
+
+
+#more complex that returns k c and f as table
+
+convert_f_to_c_k <- function(f) {
+  c <- (f - 32) * 5/9
+  k  <- c + 273.15
+  out_df <- data.frame(fahr = f, celsius = c, kelvin = k)
+  return(out_df)
+}
+
+temps_df <- convert_f_to_c_k(seq(-100, 100, 50))
+temps_df
+
+
+#or named list
+convert_f_to_c_k <- function(f) {
+  c <- (f - 32) * 5/9
+  k  <- c + 273.15
+  out_list <- list(fahr = f, celsius = c, kelvin = k)
+  return(out_list)
+}
+
+temps_list <- convert_f_to_c_k(seq(-100, 100, 50))
+temps_list
+
+# important to include return function at end intead of print, which just prints the last thing that was created. Anything after return is ignored
+
+# functions can't change variables in your workspace
+
+```
+
+## Iterating
+
+```{r}
+nums <- list(1, 3, 9, 49, 101, pi)
+purrr::map_vec(.x = nums, .f = sqrt)
+base::sapply(X = nums, FUN = sqrt)
+
+#apply function to every value in the designated sequence
+#no parenthesis after name of the function
+
+#complex example
+library(palmerpenguins)
+data(penguins)
+spp_vec <- unique(penguins$species)
+
+calc_bill_model <- function(spp, df) {
+    spp_df <- df %>%
+        filter(species == spp)
+    bill_mdl <- lm(bill_length_mm ~ bill_depth_mm, data = spp_df)
+    return(bill_mdl)
+}
+map_results <- purrr::map(.x = spp_vec, .f = calc_bill_model, df = penguins)
+broom::tidy(map_results[[3]])
+lapply_results <- base::lapply(X = spp_vec, FUN = calc_bill_model, df = penguins)
+broom::tidy(lapply_results[[3]])
+```
+
+# Anonymous functions
+
+```{r}
+#good for functions you don't need to reuse
+
+base::sapply(X = 1:3, FUN = function(x) x + 1)
+#or
+base::sapply(X = 1:3, FUN = \(x) x + 1)
+#or
+purrr::map_vec(.x = 1:3, .f = ~ .x + 1)
+#or
+purrr::map_vec(.x = 1:3, .f = \(x) x + 1)
+
+```
+
+## Custom ggplot themes
+
+```{r}
+custom_theme <- function(base_size = 9) {
+  theme(
+    text             = element_text(family = "serif",
+                                    color  = "slateblue4",
+                                    size   = base_size),
+    plot.title       = element_text(size   = rel(1.25),
+                                    hjust  = 0.5,
+                                    face   = "bold"),
+    panel.background = element_rect(color = 'slateblue3',
+                                    fill  = 'azure'),
+    panel.grid.major = element_line(color    = "slateblue1",
+                                    linewidth = 0.25),
+    legend.position  = c(.9, .4),
+    axis.ticks       = element_line(color = 'red')
+  )
+}
+```
+
+## Wrap ggplots in functions for easy repetition
+
+
+```{r}
+scatterplot <- function(df, point_size = 2, font_size = 9) {
+  ggplot(data = df, mapping = aes(x = fahr, y = celsius, color = kelvin)) +
+    geom_point(size = point_size) +
+    scale_color_viridis_c() +
+    custom_theme(font_size)
+}
+
+scatterplot(temps_df, point_size = 3, font_size = 16) +
+  labs(title = 'Temperature Conversions')
+```
+
