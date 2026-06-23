@@ -1,0 +1,159 @@
+
+
+
+```{r}
+#load packages
+library(librarian)
+librarian::shelf(dplyr, ggplot2, lubridate, purrr, sf, dataRetrieval, tigris, tidyverse)
+
+
+```{r}
+# Get all stream gauge stations in California
+ca_streams <- read_waterdata_monitoring_location(
+  state_name = "California",
+  site_type = "Stream"
+)
+
+```
+
+
+```{r}
+#create a bounding box to filter data on map
+
+# Build a bounding box for a region of interest, then filter spatially
+delta_bbox <- sf::st_bbox(c(xmin = -122.1, ymin = 37.8,
+                            xmax = -121.2, ymax = 38.5),
+                          crs = sf::st_crs(4326))
+delta_sites <- sf::st_filter(ca_streams, sf::st_as_sfc(delta_bbox))
+
+# How many stations?
+nrow(delta_sites)
+
+# Preview results (geometry column is retained automatically)
+delta_sites |>
+  select(monitoring_location_id, monitoring_location_name) |>
+  head(10)
+```
+
+
+```{r}
+options(tigris_use_cache = TRUE)
+
+# Station of interest (already an sf object from delta_sites)
+freeport <- delta_sites |>
+  filter(monitoring_location_id == "USGS-11447650")
+
+# Compute map extent: ±0.35° around the station
+lon <- as.numeric(sf::st_coordinates(freeport)[1, "X"])
+lat <- as.numeric(sf::st_coordinates(freeport)[1, "Y"])
+buf <- 0.35
+map_xlim <- c(lon - buf, lon + buf)
+map_ylim <- c(lat - buf, lat + buf)
+
+# Find counties intersecting the visual extent
+vis_rect <- sf::st_sfc(
+  sf::st_polygon(list(matrix(c(
+    map_xlim[1], map_ylim[1], map_xlim[2], map_ylim[1],
+    map_xlim[2], map_ylim[2], map_xlim[1], map_ylim[2],
+    map_xlim[1], map_ylim[1]
+  ), ncol = 2, byrow = TRUE))),
+  crs = sf::st_crs(4326)
+)
+all_ca <- counties(state = "CA", year = 2022, progress_bar = FALSE)
+area_counties <- sf::st_filter(all_ca,
+    sf::st_transform(vis_rect, sf::st_crs(all_ca)))
+
+# Water-body polygons for those counties
+area_water_sf <- map(area_counties$NAME,
+    ~area_water("CA", county = .x, year = 2022)) |>
+  bind_rows()
+
+# Extract Freeport station coordinates for the text label (avoids
+# geom_sf_text CRS warning)
+site_coords <- as.data.frame(sf::st_coordinates(freeport))
+
+ggplot() +
+  geom_sf(data = area_counties, fill = "#f5f0e8",
+          color = "gray60", linewidth = 0.3) +
+  geom_sf(data = area_water_sf, fill = "#a6cee3",
+          color = "#6baed6", linewidth = 0.1) +
+  geom_sf(data = freeport, color = "#e31a1c",
+          size = 4, shape = 21, fill = "#e31a1c") +
+  geom_text(data = site_coords,
+            aes(x = X, y = Y, label = "Freeport\n(11447650)"),
+            nudge_x = 0.05, hjust = 0, size = 2.8) +
+  coord_sf(xlim = map_xlim, ylim = map_ylim, expand = FALSE) +
+  labs(title = "Sacramento River at Freeport (USGS 11447650)",
+       x = NULL,
+       y = NULL) +
+  theme_light() +
+  theme(panel.background = element_rect(fill = "#e8f4f8"))
+```
+
+
+```{r}
+# What data does Freeport have?
+freeport_avail <- read_waterdata_combined_meta(
+  monitoring_location_id = "USGS-11447650"
+)
+
+# Which parameters are available, and for how long?
+freeport_avail |>
+  select(parameter_code, parameter_name, statistic_id, begin, end) |>
+  arrange(parameter_code, statistic_id)
+```
+
+Option C: Temperature vs. discharge: Retrieve both daily mean temperature (00010) and daily mean suspended sediment concentration (80154) at Freeport. Make a scatter plot. Is there a clear relationship? What might you look at next?
+
+
+```{r}
+freeport_temp_file <- "data/freeport_temp.rds"
+
+if (!file.exists(freeport_temp_file)) {
+  message("Fetching daily temperature from USGS...")
+  freeport_temp <- read_waterdata_daily(
+    monitoring_location_id = "USGS-11447650",  # note "USGS-" prefix
+    parameter_code = "00010",  # water temperature
+    statistic_id = "00003",  # daily mean
+    time = c("2020-01-01", "2023-12-31")
+  )
+  dir.create("data", showWarnings = FALSE)
+  saveRDS(freeport_temp, freeport_temp_file)
+} else {
+  freeport_temp <- readRDS(freeport_temp_file)
+}
+
+glimpse(freeport_temp)
+
+freeport_ss <- read_waterdata_daily(
+  monitoring_location_id = "USGS-11447650",
+  parameter_code = "80154",  # suspnd sedmnt conc
+  statistic_id = "00003",  # daily mean
+  time = c("2020-01-01", "2023-12-31")
+)
+# value column holds the daily mean suspended sediment concentration in mg/L
+
+
+multi <- read_waterdata_daily(
+  monitoring_location_id = "USGS-11447650",
+  parameter_code = c("00010", "00060", "80154"),  # temp, discharge, susp sedmnt conc
+  statistic_id = "00003",  # daily mean for all three
+  time = c("2020-01-01", "2023-12-31")
+)
+
+# Plot time series faceted by parameter
+multi %>%
+  ggplot(aes(x = time, y = value, col = parameter_code)) +
+  geom_line() +
+  facet_wrap(~parameter_code, scales = "free_y", ncol = 1)
+
+
+
+
+#plot scatter plot
+g_temp_sed <- ggplot(multi_2, aes(x = `00010`, y = `80154`)) +
+    geom_point()+
+    labs(x = "Water Temperature",
+    y = "Suspended Sediment Concentration")
+g_temp_sed
+```
